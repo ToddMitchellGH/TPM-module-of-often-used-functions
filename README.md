@@ -3,7 +3,7 @@ Technical, useful functions I have written that I use a lot.  I use this module 
 calculations.
 
 
- 'anomalies',  Calculates daily, monthly, seasonal, annual anomalies
+ 'anomalies',  Calculates daily, monthly, seasonal, annual anomalies<br>
  'arclength',  Calculates the arc-length between points on a sphere
  'fill_year',  Appends NaNs to a dataset to make a complete year of data
  'find_latlon',          I haven't used this for a while.  Probably finds gridpoints with values exceeding a threshold

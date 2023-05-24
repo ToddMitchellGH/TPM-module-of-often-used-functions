@@ -1,3 +1,23 @@
+def annualize( ts, first=None ):
+    '''
+    Calculate "annual" (12-month averages) of a monthly timeseries,
+    beginning with the "first" month.  "First" ranges from 0 to 11,
+    and is set to 0 if no value provided.  It would be good
+    to add the capability to analyze multiple-dimension arrays.
+    
+    Todd Mitchell, May 2023
+    '''
+    import numpy as np
+    
+    if first is None:
+        first = 0
+    
+    nyr = int( np.floor( ts[first:].shape[0] / 12 ) )
+    last = first + (nyr*12)
+    temp = ts[first:last]
+    temp = np.reshape( temp, ( -1, 12 ))  # This and the following line are important.
+    temp = np.nanmean( temp, axis=1 )
+    return temp
 def anomalies( fdat, yr1=None, yr1clim=None, yr2clim=None, nperyr=None ):
     '''Calculate anomalies and climatology of nperyr ( number of records per year ) data.
 
@@ -53,24 +73,6 @@ def anomalies( fdat, yr1=None, yr1clim=None, yr2clim=None, nperyr=None ):
 # See https://jakevdp.github.io/PythonDataScienceHandbook/02.05-computation-on-arrays-broadcasting.html
 
     return anom, clim
-def arclength( lat1, lon1, lat2, lon2, radius=None ):
-    """Arc-length distance in km
-
-    Assumes angles in degrees ( not radians ). 
-
-    Todd Mitchell, April 2019"""
-
-    if radius is None:
-        radius = 6.37e3  # in km
-
-    import numpy as np
-    meanlat = np.mean( ( lat1, lat2 ) )
-    rcosine   = radius * np.cos( np.deg2rad( meanlat ) )
-    a = rcosine * ( lon2 - lon1 ) / 360  * 2 * np.pi
-    b = radius  * ( lat2  - lat1 )   / 360 * 2 * np.pi
-
-    return np.sqrt( a * a + b * b )
-
 def fill_year( array, nperyr=None ):
     '''Append missing values ("NaN"s) to a time series / data file
     to make complete years of data.
@@ -100,6 +102,45 @@ def fill_year( array, nperyr=None ):
         temp = np.ones( ( nt2-nt, nx ), dtype="int" ) * np.nan
         array = np.vstack( ( array, temp ) )
     return( array )
+def find_2d_minmax( X, Y, data, domain=None ):
+    '''Find the mininum and maximum values in a 2-dimensional data array.
+    
+    Inputs:
+        X, Y: vector or 2-dimensional arrays of longitudes and latitudes, respectively.
+            The algorithm assumes that the data is an equal-angle grid
+        data is a 2-dimensional array
+        domain (optional) list of westernmost and easternmost longitudes, southernmost
+            and northmost latitudes, in that order
+    Outputs: 
+        mininum and maximum values
+        domain as a list, and min(X), max(X), min(Y), max(Y) if not an input.  This can save 
+            having to type this information again for a plot.
+            
+    Todd Mitchell, July 2022'''
+    
+    import nunpy as np
+    
+    xgrid2 = X
+    ygrid2 = Y
+    if X.ndim==1: 
+        xgrid2, ygrid2 = np.meshgrid( X, Y )
+        
+    if domain is None:
+        dx = X[0,1]-X[0,0]
+        xmin = np.min(X) - dx/2
+        xmax = np.max(X) + dx/2
+        dy = abs(Y[1,0] - Y[0,0])
+        ymin = np.min(Y) - dy/2
+        ymax = np.max(Y) + dy/2
+        domain = [ xmin, xmax, ymin, ymax ]
+    
+    x = np.where( (xgrid2>=domain[0]) & (xgrid2<=domain[1]) \
+                & (ygrid2>=domain[2]) & (ygrid2<=domain[3]))
+    min_value = np.nanmin( data[x[0],x[1]] )
+    max_value = np.nanmax( data[x[0],x[1]] )
+    print( f"minimum value {min_value}, maximum value {max_value}" )
+    
+    return min_value, max_value, domain
 def find_latlon( xgrid, ygrid, lat, lon ):
     '''Identify the x and y gridpoints that are closest to 
     the input lat and lon.  
@@ -132,6 +173,68 @@ def find_latlon( xgrid, ygrid, lat, lon ):
         print( len(xval), ' gridpoints nearest to ', lon )
 
     return{ 'yval': yval, 'xval': xval }
+def latlon_labels( lat=None, lon=None ):
+    '''
+    Make nice looking latitude and longitude labels.
+    Plot the labels with Times font.
+    
+    Inputs: lat, lon are np.ndarrays of latitudes and longitudes, respectively
+    
+    Tests are made for the existence of latitude and longitude values, also,
+    so that one can make latitude-time or time-longitude plots, respectively.
+    For these, the latitudes (longitudes) are on the ordinate (abscissa).
+    
+    Todd Mitchell, April 2023.
+    '''
+    
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    iopt = 3
+    if lat is None:
+        iopt = 2
+    if lon is None:
+        iopt = 1
+    
+    if (iopt==1) | (iopt==3):
+        clat = []
+        for icnt, value in enumerate( lat ):
+            if (icnt == 0) | (icnt == (lat.shape[0]-1)):
+                cns = 'S'
+                if value > 0:
+                    cns = 'N'
+                if abs(value)<10:
+                    clat.append( ' ' + str(abs(value)) + cns )
+                else:
+                    clat.append( str(abs(value)) + cns )
+            elif value == 0:
+                clat.append( 'EQ ' )
+            else:
+                if abs(value)<10:
+                    clat.append( ' ' + str(abs(value)) + ' ' )
+                else:
+                    clat.append( str(abs(value)) + ' ' )
+        plt.yticks( lat, clat, font='Times' )
+
+    if (iopt==2) | (iopt==3):
+# Make sure the longitude values are < 360
+        x = np.where( lon > 180 )[0]
+        if len(x)>0: 
+            lon[x] = lon[x] - 360
+        clon = []
+        for icnt, value in enumerate( lon ):
+            if value == 0:
+                clon.append( 'GM' )
+            elif value == 180:
+                clon.append( 'DL' )
+            elif (icnt == 0) | (icnt == (lon.shape[0] - 1)):
+                cew = 'E'
+                if value < 0:
+                    cew = 'W'
+                clon.append( str(abs(value)) + cew )
+            else:
+                clon.append( str(abs(value)) )
+        plt.xticks( lon, clon, font='Times' )
 def plot_vertical_lines( xvals, yvals, zorder=None, color=None ):
     """Plot vertical lines on plots.  The default is that these lines are very light gray.
     zorder is used to force these lines to be beneath the other plot elements
@@ -186,54 +289,6 @@ def threetotwo( array ):
     array = np.reshape( array, ( nx*ny, nt ) )
     array = array.T
     return( array )
-def time_shift( fdat, yrfst1, yrlst1, yrfst2, yrlst2, nperyr=None ):
-    '''Change the period of record of a dataset.  If necessary, put in NaNs to
-    make the record longer.
-
-    Input variables:
-    fdat                data -- the zeroeth dimension is time.
-    yrfst1, yrlst1      first and last years of the input  data.
-    yrfst2, yrlst2      first and last years of the output data.
-    nperyr              (optional) number of records per year.  default = 12
-
-    Todd Mitchell, December 2020'''
-
-    import numpy as np
-    
-    if nperyr is None:
-        nperyr = 12    # "monthly" is the default option 
-    
-    nt = ( yrlst1 - yrfst1 + 1 ) * nperyr
-    if nt != fdat.shape[0]:
-        f'The specified first and last years are inconsistent with the time series length.'
-        f'fdat.shape {fdat.shape} nt {nt}'
-
-# Remove year(s) from the beginning of the series/data
-    if yrfst2 > yrfst1:
-        fdat = fdat[(yrfst2-yrfst1)*nperyr:]
-
-# Remove year(s) from the end of the series/data
-    if yrlst2 < yrlst1:
-        fdat = fdat[:-(yrlst1-yrlst2)*nperyr]
-
-# Prepend NaNs to make the series/data longer
-    if yrfst2 < yrfst1:
-        nfill = ( yrfst1 - yrfst2 ) * nperyr
-        if fdat.ndim==1:
-            fdat = np.concatenate( ( np.zeros(nfill)*np.nan, fdat ), axis=0 )
-        else:
-            fdat = np.concatenate( ( np.zeros((nfill,*fdat.shape[1:][:]))*np.nan, fdat ), axis=0 )
-        
-# Append NaNs to make the series/data longer
-    if yrlst2 > yrlst1:
-        nfill2 = ( yrlst2 - yrlst1 ) * nperyr
-        if fdat.ndim==1:
-            fdat = np.concatenate( ( fdat, np.zeros(nfill2)*np.nan ), axis=0 )
-        else:
-            fdat = np.concatenate( ( fdat, np.zeros((nfill2,*fdat.shape[1:][:]))*np.nan ), axis=0 )
-
-    return fdat
-
 def write_ts( ts, yr1, yr2, yrfst=None ):
     '''write_ts( ts, yr1, yr2 ) writes a monthly timeseries in table form to stdio.
 
@@ -360,3 +415,69 @@ def yearsmonthsdays( yr1, yr2=None ):
         jdays = jdays.reshape( (-1, 1 ) )
 #    return ( years, months, days, jdays )
     return { 'years': years, 'months':months, 'days':days, 'jdays':jdays }
+def arclength( lat1, lon1, lat2, lon2, radius=None ):
+    """Arc-length distance in km
+
+    Assumes angles in degrees ( not radians ). 
+
+    Todd Mitchell, April 2019"""
+
+    if radius is None:
+        radius = 6.37e3  # in km
+
+    import numpy as np
+    meanlat = np.mean( ( lat1, lat2 ) )
+    rcosine   = radius * np.cos( np.deg2rad( meanlat ) )
+    a = rcosine * ( lon2 - lon1 ) / 360  * 2 * np.pi
+    b = radius  * ( lat2  - lat1 )   / 360 * 2 * np.pi
+
+    return np.sqrt( a * a + b * b )
+
+def time_shift( fdat, yrfst1, yrlst1, yrfst2, yrlst2, nperyr=None ):
+    '''Change the period of record of a dataset.  If necessary, put in NaNs to
+    make the record longer.
+
+    Input variables:
+    fdat                data -- the zeroeth dimension is time.
+    yrfst1, yrlst1      first and last years of the input  data.
+    yrfst2, yrlst2      first and last years of the output data.
+    nperyr              (optional) number of records per year.  default = 12
+
+    Todd Mitchell, December 2020'''
+
+    import numpy as np
+    
+    if nperyr is None:
+        nperyr = 12    # "monthly" is the default option 
+    
+    nt = ( yrlst1 - yrfst1 + 1 ) * nperyr
+    if nt != fdat.shape[0]:
+        f'The specified first and last years are inconsistent with the time series length.'
+        f'fdat.shape {fdat.shape} nt {nt}'
+
+# Remove year(s) from the beginning of the series/data
+    if yrfst2 > yrfst1:
+        fdat = fdat[(yrfst2-yrfst1)*nperyr:]
+
+# Remove year(s) from the end of the series/data
+    if yrlst2 < yrlst1:
+        fdat = fdat[:-(yrlst1-yrlst2)*nperyr]
+
+# Prepend NaNs to make the series/data longer
+    if yrfst2 < yrfst1:
+        nfill = ( yrfst1 - yrfst2 ) * nperyr
+        if fdat.ndim==1:
+            fdat = np.concatenate( ( np.zeros(nfill)*np.nan, fdat ), axis=0 )
+        else:
+            fdat = np.concatenate( ( np.zeros((nfill,*fdat.shape[1:][:]))*np.nan, fdat ), axis=0 )
+        
+# Append NaNs to make the series/data longer
+    if yrlst2 > yrlst1:
+        nfill2 = ( yrlst2 - yrlst1 ) * nperyr
+        if fdat.ndim==1:
+            fdat = np.concatenate( ( fdat, np.zeros(nfill2)*np.nan ), axis=0 )
+        else:
+            fdat = np.concatenate( ( fdat, np.zeros((nfill2,*fdat.shape[1:][:]))*np.nan ), axis=0 )
+
+    return fdat
+

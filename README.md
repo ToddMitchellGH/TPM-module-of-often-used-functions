@@ -1,5 +1,5 @@
 # TPM-module-of-often-used-functions
-Technical, useful functions I have written that I use in all of my calculations.
+Functions I have written that I use in all of my calculations.  Most of them are simple, and their existence as functions save me from having to type more!
 
 
  'anomalies',  Calculates daily, monthly, seasonal, annual anomalies<br>

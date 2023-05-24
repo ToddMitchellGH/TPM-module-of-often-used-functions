@@ -1,7 +1,7 @@
 # TPM-module-of-often-used-functions
 Functions I have written that I use in my calculations.  Most of them are simple, and their existence as functions save me from having to type more!
 
-
+'annualize',  Calculates 12-month averages of timeseries<br>
  'anomalies',  Calculates daily, monthly, seasonal, annual anomalies<br>
  'arclength',  Calculates the arc-length between points on a sphere<br>
  'fill_year',  Appends NaNs to a dataset to make a complete year of data<br>
@@ -14,6 +14,6 @@ Functions I have written that I use in my calculations.  Most of them are simple
  'yearsmonths',          Monthly values of year and month for input year(s)<br>
  'yearsmonthsdays'.      Daily values of year, month, day of month, Julian day (1-365/366) for input year(s)<br>
  <br>
- Todd Mitchell, August 2022
+ Todd Mitchell, May 2023
  
  

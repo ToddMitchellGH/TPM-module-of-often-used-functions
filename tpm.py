@@ -32,7 +32,7 @@ def anomalies( fdat, yr1=None, yr1clim=None, yr2clim=None, nperyr=None ):
 
     This is the python version of my Matlab script.  "Broadcasting" code by Jeremy McGibbon
     
-    Todd Mitchell, February 2019'''
+    Todd Mitchell, February 2025'''
 
     import sys
     import numpy as np
@@ -59,20 +59,46 @@ def anomalies( fdat, yr1=None, yr1clim=None, yr2clim=None, nperyr=None ):
     clim = np.zeros( (nperyr,) + fdat.shape[ 1: ] )
     anom = np.zeros( fdat.shape )
 
-    "The number of dimensions is {}".format( fdat.ndim ) 
-    if fdat.ndim<=2:
+#    print( "The number of dimensions is {}".format( fdat.ndim )  )
+    if fdat.ndim==1:
         for icnt in np.arange( nperyr ):
             clim[icnt] = np.nanmean( fdat[ skip+icnt:skip+nt2:nperyr ] )
-            anom[ icnt::nperyr ] = fdat[ icnt::nperyr ] - ( clim[icnt] )[None]
-
+            anom[ icnt::nperyr ] = fdat[ icnt::nperyr ] - ( clim[icnt] )
+    elif fdat.ndim==2:
+        for icnt in np.arange( nperyr ):
+            clim[icnt,:] = np.nanmean( fdat[ skip+icnt:skip+nt2:nperyr,: ], axis=0 )
+            anom[ icnt::nperyr,: ] = fdat[ icnt::nperyr,: ] - ( clim[icnt,:] )[None,:]
+    elif fdat.ndim==3:
+        for icnt in np.arange( nperyr ):
+            clim[icnt,:,:] = np.nanmean( fdat[ skip+icnt:skip+nt2:nperyr,:,: ], axis=0 )
+            anom[ icnt::nperyr,:,: ] = fdat[ icnt::nperyr,:,: ] - ( clim[icnt,:,:] )[None,:,:]
     else:
-        "Need to add the code to handle {} dimensions.  It's easy!".format( fdat.ndim )
+        print( "Need to add the code to handle {} dimensions.  It's easy!".format( fdat.ndim ) )
+
 # seasonal_cycle[i,:,:] = np.mean(sst[i::12,:,:])
 # sst_anom[i::12,:,:] = sst[i::12,:,:] - (seasonal_cycle[i,:,:])[None,:,:]  is the form
 # Broadcasting rules are described at
 # See https://jakevdp.github.io/PythonDataScienceHandbook/02.05-computation-on-arrays-broadcasting.html
 
     return anom, clim
+def arclength( lat1, lon1, lat2, lon2, radius=None ):
+    """Arc-length distance in km
+
+    Assumes angles in degrees ( not radians ). 
+
+    Todd Mitchell, April 2019"""
+
+    if radius is None:
+        radius = 6.37e3  # in km
+
+    import numpy as np
+    meanlat = np.mean( ( lat1, lat2 ) )
+    rcosine   = radius * np.cos( np.deg2rad( meanlat ) )
+    a = rcosine * ( lon2 - lon1 ) / 360  * 2 * np.pi
+    b = radius  * ( lat2  - lat1 )   / 360 * 2 * np.pi
+
+    return np.sqrt( a * a + b * b )
+
 def fill_year( array, nperyr=None ):
     '''Append missing values ("NaN"s) to a time series / data file
     to make complete years of data.
@@ -173,7 +199,7 @@ def find_latlon( xgrid, ygrid, lat, lon ):
         print( len(xval), ' gridpoints nearest to ', lon )
 
     return{ 'yval': yval, 'xval': xval }
-def latlon_labels( lat=None, lon=None ):
+def latlon_labels( lat=None, lon=None, fontsize=None ):
     '''
     Make nice looking latitude and longitude labels.
     Plot the labels with Times font.
@@ -189,6 +215,9 @@ def latlon_labels( lat=None, lon=None ):
     
     import matplotlib.pyplot as plt
     import numpy as np
+
+    if fontsize is None:
+        fontsize = 12
     
     iopt = 3
     if lat is None:
@@ -214,7 +243,7 @@ def latlon_labels( lat=None, lon=None ):
                     clat.append( ' ' + str(abs(value)) + ' ' )
                 else:
                     clat.append( str(abs(value)) + ' ' )
-        plt.yticks( lat, clat, font='Times' )
+        plt.yticks( lat, clat, font='Times', fontsize=fontsize  )
 
     if (iopt==2) | (iopt==3):
 # Make sure the longitude values are < 360
@@ -234,7 +263,7 @@ def latlon_labels( lat=None, lon=None ):
                 clon.append( str(abs(value)) + cew )
             else:
                 clon.append( str(abs(value)) )
-        plt.xticks( lon, clon, font='Times' )
+        plt.xticks( lon, clon, font='Times', fontsize=fontsize )
 def plot_vertical_lines( xvals, yvals, zorder=None, color=None ):
     """Plot vertical lines on plots.  The default is that these lines are very light gray.
     zorder is used to force these lines to be beneath the other plot elements
@@ -289,29 +318,79 @@ def threetotwo( array ):
     array = np.reshape( array, ( nx*ny, nt ) )
     array = array.T
     return( array )
-def write_ts( ts, yr1, yr2, yrfst=None ):
-    '''write_ts( ts, yr1, yr2 ) writes a monthly timeseries in table form to stdio.
+def time_shift( fdat, yrfst1, yrlst1, yrfst2, yrlst2, nperyr=None ):
+    '''Change the period of record of a dataset.  If necessary, put in NaNs to
+    make the record longer.
 
-    This is the beginning of converting write_ts.m to python.
+    Input variables:
+    fdat                data -- the zeroeth dimension is time.
+    yrfst1, yrlst1      first and last years of the input  data.
+    yrfst2, yrlst2      first and last years of the output data.
+    nperyr              (optional) number of records per year.  default = 12
 
-     Todd Mitchell, February 2019 '''
+    Todd Mitchell, December 2020'''
+
+    import numpy as np
+    
+    if nperyr is None:
+        nperyr = 12    # "monthly" is the default option 
+    
+    nt = ( yrlst1 - yrfst1 + 1 ) * nperyr
+    if nt != fdat.shape[0]:
+        f'The specified first and last years are inconsistent with the time series length.'
+        f'fdat.shape {fdat.shape} nt {nt}'
+
+# Remove year(s) from the beginning of the series/data
+    if yrfst2 > yrfst1:
+        fdat = fdat[(yrfst2-yrfst1)*nperyr:]
+
+# Remove year(s) from the end of the series/data
+    if yrlst2 < yrlst1:
+        fdat = fdat[:-(yrlst1-yrlst2)*nperyr]
+
+# Prepend NaNs to make the series/data longer
+    if yrfst2 < yrfst1:
+        nfill = ( yrfst1 - yrfst2 ) * nperyr
+        if fdat.ndim==1:
+            fdat = np.concatenate( ( np.zeros(nfill)*np.nan, fdat ), axis=0 )
+        else:
+            fdat = np.concatenate( ( np.zeros((nfill,*fdat.shape[1:][:]))*np.nan, fdat ), axis=0 )
+        
+# Append NaNs to make the series/data longer
+    if yrlst2 > yrlst1:
+        nfill2 = ( yrlst2 - yrlst1 ) * nperyr
+        if fdat.ndim==1:
+            fdat = np.concatenate( ( fdat, np.zeros(nfill2)*np.nan ), axis=0 )
+        else:
+            fdat = np.concatenate( ( fdat, np.zeros((nfill2,*fdat.shape[1:][:]))*np.nan ), axis=0 )
+
+    return fdat
+
+def write_ts( ts, yr1, yr2, output_filename=None ):
+    '''Writes a monthly timeseries in table form to stdio or "output_filename."
+
+    For now it just writes out the table, but there is no header information.
+    Also, it needs seasonal and annual output and, especially for the ladder,
+    the option to input the first year of the output table.
+    Todd Mitchell, Novmber 2024 '''
 
     import numpy as np
     import sys
     
-    if yrfst is None:
-        yrfst = yr1
-
     nyr = yr2 - yr1 + 1
     
-    print( 'ts.shape yields', ts.shape )
-
-    a = np.reshape( np.round( ts*10 ), ( nyr, 12 ) )
+    a = np.reshape( np.round( ts ), ( nyr, 12 ) )
     a[ np.isnan(a) ] = -999
     b = np.arange( yr1, yr2+1 )
     b = np.expand_dims( b, axis=1 )
     b = np.concatenate( ( b, a ), axis=1 ).astype(int)
-    np.savetxt( sys.stdout, b, fmt='%5d%5d%5d%5d%5d%5d%5d%5d%5d%5d%5d%5d%5d' )
+    output_device = output_filename
+    if output_filename is None:
+        output_device = sys.stdout
+    np.savetxt( output_device, b, \
+                header='     Jan  Feb  Mar  Apr  May  Jun  Jul  Aug  Sep  Oct  Nov  Dec', fmt='%5d%5d%5d%5d%5d%5d%5d%5d%5d%5d%5d%5d%5d' )
+
+    return
 def yearsmonths( yr1, yr2=None ):
     '''yearsmonths(yr1, yr2 ) returns a dictionary of monthly values of years,
     and calendar month for the input years
@@ -415,69 +494,3 @@ def yearsmonthsdays( yr1, yr2=None ):
         jdays = jdays.reshape( (-1, 1 ) )
 #    return ( years, months, days, jdays )
     return { 'years': years, 'months':months, 'days':days, 'jdays':jdays }
-def arclength( lat1, lon1, lat2, lon2, radius=None ):
-    """Arc-length distance in km
-
-    Assumes angles in degrees ( not radians ). 
-
-    Todd Mitchell, April 2019"""
-
-    if radius is None:
-        radius = 6.37e3  # in km
-
-    import numpy as np
-    meanlat = np.mean( ( lat1, lat2 ) )
-    rcosine   = radius * np.cos( np.deg2rad( meanlat ) )
-    a = rcosine * ( lon2 - lon1 ) / 360  * 2 * np.pi
-    b = radius  * ( lat2  - lat1 )   / 360 * 2 * np.pi
-
-    return np.sqrt( a * a + b * b )
-
-def time_shift( fdat, yrfst1, yrlst1, yrfst2, yrlst2, nperyr=None ):
-    '''Change the period of record of a dataset.  If necessary, put in NaNs to
-    make the record longer.
-
-    Input variables:
-    fdat                data -- the zeroeth dimension is time.
-    yrfst1, yrlst1      first and last years of the input  data.
-    yrfst2, yrlst2      first and last years of the output data.
-    nperyr              (optional) number of records per year.  default = 12
-
-    Todd Mitchell, December 2020'''
-
-    import numpy as np
-    
-    if nperyr is None:
-        nperyr = 12    # "monthly" is the default option 
-    
-    nt = ( yrlst1 - yrfst1 + 1 ) * nperyr
-    if nt != fdat.shape[0]:
-        f'The specified first and last years are inconsistent with the time series length.'
-        f'fdat.shape {fdat.shape} nt {nt}'
-
-# Remove year(s) from the beginning of the series/data
-    if yrfst2 > yrfst1:
-        fdat = fdat[(yrfst2-yrfst1)*nperyr:]
-
-# Remove year(s) from the end of the series/data
-    if yrlst2 < yrlst1:
-        fdat = fdat[:-(yrlst1-yrlst2)*nperyr]
-
-# Prepend NaNs to make the series/data longer
-    if yrfst2 < yrfst1:
-        nfill = ( yrfst1 - yrfst2 ) * nperyr
-        if fdat.ndim==1:
-            fdat = np.concatenate( ( np.zeros(nfill)*np.nan, fdat ), axis=0 )
-        else:
-            fdat = np.concatenate( ( np.zeros((nfill,*fdat.shape[1:][:]))*np.nan, fdat ), axis=0 )
-        
-# Append NaNs to make the series/data longer
-    if yrlst2 > yrlst1:
-        nfill2 = ( yrlst2 - yrlst1 ) * nperyr
-        if fdat.ndim==1:
-            fdat = np.concatenate( ( fdat, np.zeros(nfill2)*np.nan ), axis=0 )
-        else:
-            fdat = np.concatenate( ( fdat, np.zeros((nfill2,*fdat.shape[1:][:]))*np.nan ), axis=0 )
-
-    return fdat
-
